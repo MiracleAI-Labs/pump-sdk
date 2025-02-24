@@ -7,7 +7,7 @@ use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, instruction::Instruction, native_token::sol_to_lamports, pubkey::Pubkey, signature::Keypair, signer::Signer, system_instruction, transaction::Transaction
 };
 use spl_associated_token_account::get_associated_token_address;
-use crate::{accounts, common::logs_data::TradeInfo, constants::{self, trade::{DEFAULT_BUY_JITO_FEE, DEFAULT_COMPUTE_UNIT_LIMIT, DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SELL_JITO_FEE, DEFAULT_SLIPPAGE}}};
+use crate::{accounts, common::logs_data::TradeInfo, constants::{self, trade::{DEFAULT_BUY_TRADER_FEE, DEFAULT_COMPUTE_UNIT_LIMIT, DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SELL_TRADER_FEE, DEFAULT_SLIPPAGE}}};
 use borsh::BorshDeserialize;
 
 lazy_static::lazy_static! {
@@ -19,8 +19,8 @@ lazy_static::lazy_static! {
 pub struct PriorityFee {
     pub unit_limit: u32,
     pub unit_price: u64,
-    pub buy_jito_fee: f64,
-    pub sell_jito_fee: f64,
+    pub buy_trader_fee: f64,
+    pub sell_trader_fee: f64,
 }
 
 impl Default for PriorityFee {
@@ -28,8 +28,8 @@ impl Default for PriorityFee {
         Self { 
             unit_limit: DEFAULT_COMPUTE_UNIT_LIMIT, 
             unit_price: DEFAULT_COMPUTE_UNIT_PRICE, 
-            buy_jito_fee: DEFAULT_BUY_JITO_FEE, 
-            sell_jito_fee: DEFAULT_SELL_JITO_FEE 
+            buy_trader_fee: DEFAULT_BUY_TRADER_FEE, 
+            sell_trader_fee: DEFAULT_SELL_TRADER_FEE 
         }
     }
 }

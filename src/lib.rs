@@ -2,7 +2,7 @@ pub mod accounts;
 pub mod constants;
 pub mod error;
 pub mod instruction;
-pub mod jito;
+pub mod priority;
 pub mod grpc;
 pub mod common;
 pub mod ipfs;
@@ -11,6 +11,7 @@ pub mod trade;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use priority::Cluster;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -22,13 +23,13 @@ use common::{logs_data::TradeInfo, logs_events::PumpfunEvent, logs_subscribe};
 use common::logs_subscribe::SubscriptionHandle;
 use ipfs::TokenMetadataIPFS;
 
-use crate::jito::JitoClient;
+use crate::priority::TraderClient;
 use crate::trade::common::PriorityFee;
 
 pub struct PumpFun {
     pub payer: Arc<Keypair>,
     pub rpc: RpcClient,
-    pub jito_client: Option<JitoClient>,
+    pub trader_client: Option<TraderClient>,
     pub priority_fee: PriorityFee,
 }
 
@@ -40,7 +41,7 @@ impl Clone for PumpFun {
                 self.rpc.url().to_string(),
                 self.rpc.commitment()
             ),
-            jito_client: self.jito_client.clone(),
+            trader_client: self.trader_client.clone(),
             priority_fee: self.priority_fee.clone(),
         }
     }
@@ -51,7 +52,7 @@ impl PumpFun {
     pub fn new(
         payer: Arc<Keypair>,
         rpc_url: String,
-        jito_url: Option<String>,
+        cluster: Cluster,
         commitment: Option<CommitmentConfig>,
         priority_fee: PriorityFee,
     ) -> Self {
@@ -60,12 +61,12 @@ impl PumpFun {
             commitment.unwrap_or(CommitmentConfig::processed())
         );   
 
-        let jito_client = jito_url.map(|url| JitoClient::new(&url, None));
+        let trader_client = TraderClient::new(cluster);
 
         Self {
             payer,
             rpc,
-            jito_client,
+            trader_client: Some(trader_client),
             priority_fee,
         }
     }
@@ -113,7 +114,7 @@ impl PumpFun {
     ) -> Result<String, anyhow::Error> { 
         trade::create::create_and_buy_list_with_jito(
             &self.rpc,
-            &self.jito_client.as_ref().unwrap(),
+            &self.trader_client.as_ref().unwrap(),
             payers,
             mint,
             ipfs,
@@ -133,7 +134,7 @@ impl PumpFun {
     ) -> Result<String, anyhow::Error> { 
         trade::create::create_and_buy_with_jito(
             &self.rpc,
-            &self.jito_client.as_ref().unwrap(),
+            &self.trader_client.as_ref().unwrap(),
             payer,
             mint,
             ipfs,
@@ -168,7 +169,7 @@ impl PumpFun {
     ) -> Result<String, anyhow::Error> {
         trade::buy::buy_with_jito(
             &self.rpc,
-            &self.jito_client.as_ref().unwrap(),
+            &self.trader_client.as_ref().unwrap(),
             &self.payer,
             mint,
             amount_sol,
@@ -186,7 +187,7 @@ impl PumpFun {
     ) -> Result<String, anyhow::Error> {
         trade::buy::buy_list_with_jito(
             &self.rpc,
-            &self.jito_client.as_ref().unwrap(),
+            &self.trader_client.as_ref().unwrap(),
             payers,
             mint,
             amount_sols,
@@ -238,7 +239,7 @@ impl PumpFun {
         trade::sell::sell_by_percent_with_jito(
             &self.rpc,
             &self.payer,
-            self.jito_client.as_ref().unwrap(),
+            &self.trader_client.as_ref().unwrap(),
             mint,
             percent,
             slippage_basis_points,
@@ -253,13 +254,13 @@ impl PumpFun {
         amount_token: Option<u64>,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
-        let jito_client = self.jito_client.as_ref()
-            .ok_or_else(|| anyhow!("Jito client not found"))?;
+        let trader_client = self.trader_client.as_ref()
+            .ok_or_else(|| anyhow!("Trader client not found"))?;
 
         trade::sell::sell_with_jito(
             &self.rpc,
             &self.payer,
-            jito_client,
+            trader_client,
             mint,
             amount_token,
             slippage_basis_points,

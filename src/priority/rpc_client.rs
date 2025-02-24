@@ -13,7 +13,7 @@ use solana_rpc_client_api::{
 use solana_sdk::{bs58, commitment_config::CommitmentConfig};
 use solana_transaction_status::UiTransactionEncoding;
 
-use crate::jito::{
+use crate::priority::{
     client_error,
     client_error::{Error as ClientError, Result as ClientResult},
     http_sender::HttpSender,
@@ -145,57 +145,4 @@ where
         }
     };
     Ok(encoded)
-}
-
-#[cfg(test)]
-mod rpc_client_tests {
-    use solana_program::hash::Hash;
-    use solana_sdk::{
-        pubkey::Pubkey, signature::Signer, signer::keypair::Keypair, system_transaction,
-        transaction::VersionedTransaction,
-    };
-
-    use crate::jito::rpc_client::RpcClient;
-
-    const SERVER_URL: &str = "http://0.0.0.0:8080/api/v1/bundles";
-
-    #[tokio::test]
-    pub async fn get_tip_accounts() {
-        let rpc_client = RpcClient::new(SERVER_URL.to_owned());
-        let tip_accounts = rpc_client.get_tip_accounts().await;
-        println!("{:?}", tip_accounts);
-    }
-
-    #[tokio::test]
-    pub async fn send_bundle() {
-        let rpc_client = RpcClient::new(SERVER_URL.to_owned());
-        let signer_keypair = Keypair::new();
-        let recent_blockhash = Hash::new_unique();
-        let tip_account = Pubkey::try_from("DCN82qDxJAQuSqHhv2BJuAgi41SPeKZB5ioBCTMNDrCC").unwrap();
-
-        let mut bundle: Vec<_> = vec![VersionedTransaction::from(system_transaction::transfer(
-            &signer_keypair,
-            &signer_keypair.pubkey(),
-            10000,
-            recent_blockhash,
-        ))];
-
-        bundle.push(VersionedTransaction::from(system_transaction::transfer(
-            &signer_keypair,
-            &tip_account,
-            10000,
-            recent_blockhash,
-        )));
-        let response = rpc_client.send_bundle(&bundle).await;
-        println!("{:?}", response);
-    }
-
-    #[tokio::test]
-    pub async fn get_bundle_statuses() {
-        let rpc_client = RpcClient::new(SERVER_URL.to_owned());
-        let bundle_id =
-            "6e4b90284778a40633b56e4289202ea79e62d2296bb3d45398bb93f6c9ec083d".to_owned();
-        let response = rpc_client.get_bundle_statuses(&[bundle_id]).await;
-        println!("{:?}", response);
-    }
 }

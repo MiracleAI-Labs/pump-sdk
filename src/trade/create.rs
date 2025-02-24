@@ -10,7 +10,7 @@ use spl_associated_token_account::{
     instruction::create_associated_token_account,
 };
 
-use crate::{constants::{self, trade::JITO_TIP_AMOUNT}, instruction, ipfs::TokenMetadataIPFS, jito::JitoClient, trade::buy::build_buy_transaction_with_jito};
+use crate::{constants::{self, trade::TRADER_TIP_AMOUNT}, instruction, ipfs::TokenMetadataIPFS, priority::TraderClient, trade::buy::build_buy_transaction_with_jito};
 
 use super::common::{create_priority_fee_instructions, get_buy_amount_with_slippage, get_global_account, PriorityFee};
 
@@ -69,7 +69,7 @@ pub async fn create_and_buy(
 
 pub async fn create_and_buy_list_with_jito(
     rpc: &RpcClient,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     payers: Vec<&Keypair>,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,
@@ -81,16 +81,16 @@ pub async fn create_and_buy_list_with_jito(
     let start_time = Instant::now();
 
     let mut transactions = Vec::new();
-    let transaction = build_create_and_buy_transaction_with_jito(rpc, jito_client, payers[0], mint, ipfs, amount_sols[0], slippage_basis_points, priority_fee).await?;
+    let transaction = build_create_and_buy_transaction_with_jito(rpc, trader_client, payers[0], mint, ipfs, amount_sols[0], slippage_basis_points, priority_fee).await?;
     transactions.push(transaction);
     
     for (i, payer) in payers.iter().skip(1).enumerate() {
         println!("Creating and buying token index: {}", i);
-        let buy_transaction = build_buy_transaction_with_jito(rpc, jito_client, payer, &mint.pubkey(), amount_sols[i], slippage_basis_points, priority_fee).await?;
+        let buy_transaction = build_buy_transaction_with_jito(rpc, trader_client, payer, &mint.pubkey(), amount_sols[i], slippage_basis_points, priority_fee).await?;
         transactions.push(buy_transaction);
     }
 
-    let signatures = jito_client.send_transactions(&transactions).await?;
+    let signatures = trader_client.send_transactions(&transactions).await?;
 
     println!("Total Jito create and buy operation time: {:?}ms", start_time.elapsed().as_millis());
     
@@ -99,7 +99,7 @@ pub async fn create_and_buy_list_with_jito(
 
 pub async fn create_and_buy_with_jito(
     rpc: &RpcClient,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     payer: &Keypair,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,
@@ -110,9 +110,9 @@ pub async fn create_and_buy_with_jito(
 
     let start_time = Instant::now();
 
-    let transaction = build_create_and_buy_transaction_with_jito(rpc, jito_client, payer, mint, ipfs, amount_sol, slippage_basis_points, priority_fee).await?;
+    let transaction = build_create_and_buy_transaction_with_jito(rpc, trader_client, payer, mint, ipfs, amount_sol, slippage_basis_points, priority_fee).await?;
 
-    let signature = jito_client.send_transaction(&transaction).await?;
+    let signature = trader_client.send_transaction(&transaction).await?;
 
     println!("Total Jito create and buy operation time: {:?}ms, signature: {}", start_time.elapsed().as_millis(), signature);
 
@@ -142,7 +142,7 @@ pub async fn build_create_and_buy_transaction(
 
 pub async fn build_create_and_buy_transaction_with_jito(
     rpc: &RpcClient,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     payer: &Keypair,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,
@@ -150,7 +150,7 @@ pub async fn build_create_and_buy_transaction_with_jito(
     slippage_basis_points: Option<u64>,
     priority_fee: PriorityFee,  
 ) -> Result<Transaction, anyhow::Error> {
-    let instructions = build_create_and_buy_instructions_with_jito(rpc, jito_client, payer, mint, ipfs, amount_sol, slippage_basis_points, priority_fee).await?;
+    let instructions = build_create_and_buy_instructions_with_jito(rpc, trader_client, payer, mint, ipfs, amount_sol, slippage_basis_points, priority_fee).await?;
     let recent_blockhash = rpc.get_latest_blockhash()?;
     let transaction = Transaction::new_signed_with_payer(
         &instructions,
@@ -260,7 +260,7 @@ pub async fn build_create_and_buy_instructions(
 
 pub async fn build_create_and_buy_instructions_with_jito(
     rpc: &RpcClient,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     payer: &Keypair,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,
@@ -312,13 +312,13 @@ pub async fn build_create_and_buy_instructions_with_jito(
         },
     ));
 
-    let tip_account = jito_client.get_tip_account().await.map_err(|e| anyhow!(e))?;
-    let jito_fee = priority_fee.buy_jito_fee;
+    let tip_account = trader_client.get_tip_account().await.map_err(|e| anyhow!(e))?;
+    let trader_fee = priority_fee.buy_trader_fee;
     instructions.push(
         system_instruction::transfer(
             &payer.pubkey(),
             &tip_account,
-            sol_to_lamports(jito_fee * 2.0),
+            sol_to_lamports(trader_fee * 2.0),
         ),
     );
 

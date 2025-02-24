@@ -8,7 +8,7 @@ use spl_token::instruction::close_account;
 
 use std::time::Instant;
 
-use crate::{constants::trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE}, instruction, jito::JitoClient};
+use crate::{constants::trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE}, instruction, priority::TraderClient};
 
 use super::common::{calculate_with_slippage_sell, get_bonding_curve_account, get_global_account, PriorityFee};
 
@@ -61,7 +61,7 @@ pub async fn sell_by_percent(
 pub async fn sell_by_percent_with_jito(
     rpc: &RpcClient,
     payer: &Keypair,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     mint: &Pubkey,
     percent: u64,
     slippage_basis_points: Option<u64>,
@@ -73,14 +73,14 @@ pub async fn sell_by_percent_with_jito(
 
     let (balance_u64, _) = get_token_balance(rpc, payer, mint).await?;
     let amount = balance_u64 * percent / 100;
-    sell_with_jito(rpc, payer, jito_client, mint, Some(amount), slippage_basis_points, priority_fee).await
+    sell_with_jito(rpc, payer, trader_client, mint, Some(amount), slippage_basis_points, priority_fee).await
 }
 
 /// Sell tokens using Jito
 pub async fn sell_with_jito(
     rpc: &RpcClient,
     payer: &Keypair,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     mint: &Pubkey,
     amount_token: Option<u64>,
     slippage_basis_points: Option<u64>,
@@ -88,8 +88,8 @@ pub async fn sell_with_jito(
 ) -> Result<String, anyhow::Error> {
     let start_time = Instant::now();
 
-    let transaction = build_sell_transaction_with_jito(rpc, jito_client, payer, mint, amount_token, slippage_basis_points, priority_fee).await?;
-    let signature = jito_client.send_transaction(&transaction).await?;
+    let transaction = build_sell_transaction_with_jito(rpc, trader_client, payer, mint, amount_token, slippage_basis_points, priority_fee).await?;
+    let signature = trader_client.send_transaction(&transaction).await?;
     
     println!("Total Jito sell operation time: {:?}ms, signature: {}", start_time.elapsed().as_millis(), signature);
 
@@ -118,14 +118,14 @@ pub async fn build_sell_transaction(
 
 pub async fn build_sell_transaction_with_jito(
     rpc: &RpcClient,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     payer: &Keypair,
     mint: &Pubkey,
     amount_token: Option<u64>,
     slippage_basis_points: Option<u64>,
     priority_fee: PriorityFee,
 ) -> Result<Transaction, anyhow::Error> {
-    let instructions = build_sell_instructions_with_jito(rpc, jito_client, payer, mint, amount_token, slippage_basis_points, priority_fee).await?;
+    let instructions = build_sell_instructions_with_jito(rpc, trader_client, payer, mint, amount_token, slippage_basis_points, priority_fee).await?;
     let recent_blockhash = rpc.get_latest_blockhash()?;
     let transaction = Transaction::new_signed_with_payer(
         &instructions,
@@ -228,7 +228,7 @@ pub async fn build_sell_instructions(
 
 pub async fn build_sell_instructions_with_jito(
     rpc: &RpcClient,
-    jito_client: &JitoClient,
+    trader_client: &TraderClient,
     payer: &Keypair,
     mint: &Pubkey,
     amount_token: Option<u64>,
@@ -275,13 +275,13 @@ pub async fn build_sell_instructions_with_jito(
         &[&payer.pubkey()],
     )?);
 
-    let tip_account = jito_client.get_tip_account().await.map_err(|e| anyhow!(e))?;
-    let jito_fee = priority_fee.sell_jito_fee;
+    let tip_account = trader_client.get_tip_account().await.map_err(|e| anyhow!(e))?;
+    let trader_fee = priority_fee.sell_trader_fee;
     instructions.push(
         system_instruction::transfer(
             &payer.pubkey(),
             &tip_account,
-            sol_to_lamports(jito_fee),
+            sol_to_lamports(trader_fee),
         ),
     );
 

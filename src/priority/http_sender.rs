@@ -21,7 +21,7 @@ use solana_rpc_client_api::{
 };
 use tokio::time::sleep;
 
-use crate::jito::{client_error::Result, request::RpcRequest, rpc_sender::RpcSender};
+use crate::priority::{client_error::Result, request::RpcRequest, rpc_sender::RpcSender};
 
 pub struct HttpSender {
     client: Arc<reqwest::Client>,

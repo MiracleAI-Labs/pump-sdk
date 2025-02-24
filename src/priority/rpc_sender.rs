@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use solana_rpc_client::rpc_sender::RpcTransportStats;
 
-use crate::jito::{client_error::Result, request::RpcRequest};
+use crate::priority::{client_error::Result, request::RpcRequest};
 
 /// A transport for RPC calls.
 ///

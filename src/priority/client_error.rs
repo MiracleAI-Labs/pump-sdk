@@ -5,7 +5,7 @@ use solana_sdk::{
 };
 use thiserror::Error as ThisError;
 
-use crate::jito::request::RpcRequest;
+use crate::priority::request::RpcRequest;
 
 #[derive(ThisError, Debug)]
 #[error("{kind}")]
