@@ -9,9 +9,9 @@ use spl_associated_token_account::{
 };
 use std::time::Instant;
 
-use crate::{constants::{self, trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE, TRADER_TIP_AMOUNT}}, instruction, priority::TraderClient};
+use crate::{common::PriorityFee, constants::{self, trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE}}, instruction, priority::TraderClient};
 
-use super::common::{calculate_with_slippage_buy, get_bonding_curve_account, get_global_account, get_initial_buy_price, PriorityFee};
+use super::common::{calculate_with_slippage_buy, get_bonding_curve_account, get_global_account, get_initial_buy_price};
 
 pub async fn buy(
     rpc: &RpcClient,

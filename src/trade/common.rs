@@ -1,37 +1,16 @@
 use anyhow::anyhow;
-use serde::Deserialize;
 use tokio::sync::RwLock;
 use std::{collections::HashMap, sync::Arc};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, instruction::Instruction, native_token::sol_to_lamports, pubkey::Pubkey, signature::Keypair, signer::Signer, system_instruction, transaction::Transaction
+    compute_budget::ComputeBudgetInstruction, instruction::Instruction,  pubkey::Pubkey, signature::Keypair, signer::Signer, system_instruction, transaction::Transaction
 };
 use spl_associated_token_account::get_associated_token_address;
-use crate::{accounts, common::logs_data::TradeInfo, constants::{self, trade::{DEFAULT_BUY_TRADER_FEE, DEFAULT_COMPUTE_UNIT_LIMIT, DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SELL_TRADER_FEE, DEFAULT_SLIPPAGE}}};
+use crate::{accounts, common::{logs_data::TradeInfo, PriorityFee}, constants::{self, trade::DEFAULT_SLIPPAGE}};
 use borsh::BorshDeserialize;
 
 lazy_static::lazy_static! {
     static ref ACCOUNT_CACHE: RwLock<HashMap<Pubkey, Arc<accounts::GlobalAccount>>> = RwLock::new(HashMap::new());
-}
-
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq)]
-
-pub struct PriorityFee {
-    pub unit_limit: u32,
-    pub unit_price: u64,
-    pub buy_trader_fee: f64,
-    pub sell_trader_fee: f64,
-}
-
-impl Default for PriorityFee {
-    fn default() -> Self {
-        Self { 
-            unit_limit: DEFAULT_COMPUTE_UNIT_LIMIT, 
-            unit_price: DEFAULT_COMPUTE_UNIT_PRICE, 
-            buy_trader_fee: DEFAULT_BUY_TRADER_FEE, 
-            sell_trader_fee: DEFAULT_SELL_TRADER_FEE 
-        }
-    }
 }
 
 pub async fn transfer_sol(rpc: &RpcClient, payer: &Keypair, receive_wallet: &Pubkey, amount: u64) -> Result<(), anyhow::Error> {

@@ -23,18 +23,7 @@ pub mod api;
 
 use crate::priority::rpc_client::RpcClient;
 use crate::priority::api::api_client::ApiClient;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ClusterType {
-    Jito,
-    NextBlock,
-}
-
-#[derive(Debug, Clone)]
-pub struct Cluster {
-    cluster_type: ClusterType,
-    endpoint: String,
-}
+use crate::common::structs::{Cluster, FeeType};
 
 // 定义交易发送接口
 #[async_trait::async_trait]
@@ -148,12 +137,12 @@ pub struct TraderClient {
 impl Clone for TraderClient {
     fn clone(&self) -> Self {
         let cluster = self.cluster.clone();
-        let sender: Box<dyn TraderTrait> = if cluster.cluster_type == ClusterType::Jito {
+        let sender: Box<dyn TraderTrait> = if cluster.fee_type == FeeType::Jito {
             Box::new(JitoClient {
-                client: RpcClient::new(cluster.endpoint.clone())
+                client: RpcClient::new(cluster.fee_endpoint.clone())
             })
         } else {
-            let endpoint = cluster.endpoint.parse::<Uri>().unwrap();
+            let endpoint = cluster.fee_endpoint.parse::<Uri>().unwrap();
             let channel = Channel::builder(endpoint)
                 .keep_alive_timeout(Duration::from_secs(5))
                 .keep_alive_while_idle(true)
@@ -173,12 +162,12 @@ impl Clone for TraderClient {
 
 impl TraderClient {
     pub fn new(cluster: Cluster) -> Self {
-        let sender: Box<dyn TraderTrait> = if cluster.clone().cluster_type == ClusterType::Jito {
+        let sender: Box<dyn TraderTrait> = if cluster.clone().fee_type == FeeType::Jito {
             Box::new(JitoClient {
-                client: RpcClient::new(cluster.clone().endpoint)
+                client: RpcClient::new(cluster.clone().fee_endpoint)
             })
         } else {
-            let endpoint = cluster.clone().endpoint.parse::<Uri>().unwrap();
+            let endpoint = cluster.clone().fee_endpoint.parse::<Uri>().unwrap();
             let channel = Channel::builder(endpoint)
                 .keep_alive_timeout(Duration::from_secs(5))
                 .keep_alive_while_idle(true)
@@ -209,7 +198,7 @@ impl TraderClient {
         {
             let accounts = self.tip_accounts.read().await;
             if !accounts.is_empty() {
-                if let Some(acc) = accounts.iter().choose(&mut rand::thread_rng()) {
+                if let Some(acc) = accounts.iter().choose(&mut rand::rng()) {
                     return Pubkey::from_str(acc)
                         .map_err(|err| {
                             error!("jito: failed to parse Pubkey: {:?}", err);
@@ -224,7 +213,7 @@ impl TraderClient {
         let accounts = self.tip_accounts.read().await;
         accounts
             .iter()
-            .choose(&mut rand::thread_rng())
+            .choose(&mut rand::rng())
             .ok_or_else(|| anyhow!("jito: no tip accounts available"))
             .and_then(|acc| {
                 Pubkey::from_str(acc).map_err(|err| {
@@ -279,8 +268,11 @@ mod tests {
     async fn test_jito_send_transaction() -> Result<()> {
         // 初始化Jito客户端
         let jito_client = TraderClient::new(Cluster {
-            cluster_type: ClusterType::Jito,
-            endpoint: "https://jito-api.mainnet.solana.com".to_string()
+            rpc_url: "https://jito-api.mainnet.solana.com".to_string(),
+            fee_type: FeeType::Jito,
+            fee_endpoint: "https://jito-api.mainnet.solana.com".to_string(),
+            priority_fee: PriorityFee::default(),
+            commitment: CommitmentConfig::processed(),
         });
 
         // 创建一个简单的转账交易
@@ -304,8 +296,11 @@ mod tests {
     async fn test_nextblock_send_transaction() -> Result<()> {
         // 初始化NextBlock客户端
         let nextblock_client = TraderClient::new(Cluster {
-            cluster_type: ClusterType::NextBlock,
-            endpoint: "http://nextblock-api.mainnet.solana.com".to_string()
+            rpc_url: "http://nextblock-api.mainnet.solana.com".to_string(),
+            fee_type: FeeType::NextBlock,
+            fee_endpoint: "http://nextblock-api.mainnet.solana.com".to_string(),
+            priority_fee: PriorityFee::default(),
+            commitment: CommitmentConfig::processed(),
         });
 
         // 创建一个简单的转账交易

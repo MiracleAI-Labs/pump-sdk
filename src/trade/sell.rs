@@ -8,9 +8,9 @@ use spl_token::instruction::close_account;
 
 use std::time::Instant;
 
-use crate::{constants::trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE}, instruction, priority::TraderClient};
+use crate::{common::PriorityFee, constants::trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE}, instruction, priority::TraderClient};
 
-use super::common::{calculate_with_slippage_sell, get_bonding_curve_account, get_global_account, PriorityFee};
+use super::common::{calculate_with_slippage_sell, get_bonding_curve_account, get_global_account};
 
 async fn get_token_balance(rpc: &RpcClient, payer: &Keypair, mint: &Pubkey) -> Result<(u64, Pubkey), anyhow::Error> {
     let ata = get_associated_token_address(&payer.pubkey(), mint);

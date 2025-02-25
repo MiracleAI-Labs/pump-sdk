@@ -11,7 +11,6 @@ pub mod trade;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use priority::Cluster;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -19,12 +18,11 @@ use solana_sdk::{
     signature::{Keypair, Signer, Signature},
 };
 
-use common::{logs_data::TradeInfo, logs_events::PumpfunEvent, logs_subscribe};
+use common::{logs_data::TradeInfo, logs_events::PumpfunEvent, logs_subscribe, Cluster, PriorityFee};
 use common::logs_subscribe::SubscriptionHandle;
 use ipfs::TokenMetadataIPFS;
 
 use crate::priority::TraderClient;
-use crate::trade::common::PriorityFee;
 
 pub struct PumpFun {
     pub payer: Arc<Keypair>,
@@ -51,23 +49,20 @@ impl PumpFun {
     #[inline]
     pub fn new(
         payer: Arc<Keypair>,
-        rpc_url: String,
-        cluster: Cluster,
-        commitment: Option<CommitmentConfig>,
-        priority_fee: PriorityFee,
+        cluster: &Cluster,
     ) -> Self {
         let rpc = RpcClient::new_with_commitment(
-            rpc_url,
-            commitment.unwrap_or(CommitmentConfig::processed())
+            cluster.clone().rpc_url,
+            cluster.clone().commitment
         );   
 
-        let trader_client = TraderClient::new(cluster);
+        let trader_client = TraderClient::new(cluster.clone());
 
         Self {
             payer,
             rpc,
             trader_client: Some(trader_client),
-            priority_fee,
+            priority_fee: cluster.clone().priority_fee,
         }
     }
 

@@ -10,9 +10,9 @@ use spl_associated_token_account::{
     instruction::create_associated_token_account,
 };
 
-use crate::{constants::{self, trade::TRADER_TIP_AMOUNT}, instruction, ipfs::TokenMetadataIPFS, priority::TraderClient, trade::buy::build_buy_transaction_with_jito};
+use crate::{common::PriorityFee, constants, instruction, ipfs::TokenMetadataIPFS, priority::TraderClient, trade::buy::build_buy_transaction_with_jito};
 
-use super::common::{create_priority_fee_instructions, get_buy_amount_with_slippage, get_global_account, PriorityFee};
+use super::common::{create_priority_fee_instructions, get_buy_amount_with_slippage, get_global_account};
 
 /// Create a new token
 pub async fn create(
