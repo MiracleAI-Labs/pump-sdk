@@ -40,24 +40,32 @@ static TIP_ACCOUNTS: &[&str] = &[
 // 定义交易发送接口
 #[async_trait::async_trait]
 pub trait TraderTrait: Send + Sync {
-    async fn send_transaction(&mut self, transaction: &Transaction) -> Result<String, anyhow::Error>;
-    async fn send_transactions(&mut self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error>;
+    async fn send_transaction(&self, transaction: &Transaction) -> Result<String, anyhow::Error>;
+    async fn send_transactions(&self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error>;
     async fn get_tip_accounts(&self) -> Result<TipAccountResult>;
 }
 
 // Jito实现
 pub struct JitoClient {
-    client: RpcClient,
+    client: Arc<RpcClient>,
+}
+
+impl Clone for JitoClient {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone()
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl TraderTrait for JitoClient {
-    async fn send_transaction(&mut self, transaction: &Transaction) -> Result<String, anyhow::Error> {
+    async fn send_transaction(&self, transaction: &Transaction) -> Result<String, anyhow::Error> {
         let bundles = vec![VersionedTransaction::from(transaction.clone())];
         Ok(self.client.send_bundle(&bundles).await?)
     }
 
-    async fn send_transactions(&mut self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
+    async fn send_transactions(&self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
         let bundles: Vec<VersionedTransaction> = transactions.iter()
             .map(|t| VersionedTransaction::from(t.clone()))
             .collect();
@@ -70,6 +78,7 @@ impl TraderTrait for JitoClient {
     }
 }
 
+#[derive(Clone)]
 pub struct MyInterceptor {
     auth_token: String,
 }
@@ -92,18 +101,19 @@ impl Interceptor for MyInterceptor {
 }
 
 // NextBlock实现
+#[derive(Clone)]
 pub struct NextBlockClient {
     pub client: ApiClient<InterceptedService<Channel, MyInterceptor>>,
 }
 
 #[async_trait::async_trait]
 impl TraderTrait for NextBlockClient {
-    async fn send_transaction(&mut self, transaction: &Transaction) -> Result<String, anyhow::Error> {
+    async fn send_transaction(&self, transaction: &Transaction) -> Result<String, anyhow::Error> {
         let versioned_transaction = VersionedTransaction::from(transaction.clone());
         let encoding = UiTransactionEncoding::Base58;
         let content = serialize_and_encode(&versioned_transaction, encoding).await?;
         
-        let res = self.client.post_submit_v2(api::PostSubmitRequest {
+        let res = self.client.clone().post_submit_v2(api::PostSubmitRequest {
             transaction: Some(api::TransactionMessage {
                 content,
                 is_cleanup: false,
@@ -117,7 +127,7 @@ impl TraderTrait for NextBlockClient {
         Ok(res.into_inner().signature)
     }
 
-    async fn send_transactions(&mut self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
+    async fn send_transactions(&self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
         let mut entries = Vec::new();
         let encoding = UiTransactionEncoding::Base58;
         
@@ -133,7 +143,7 @@ impl TraderTrait for NextBlockClient {
             });
         }
 
-        let res = self.client.post_submit_batch_v2(api::PostSubmitBatchRequest {
+        let res = self.client.clone().post_submit_batch_v2(api::PostSubmitBatchRequest {
             entries,
             submit_strategy: api::SubmitStrategy::PSubmitAll as i32,
             use_bundle: Some(false),
@@ -153,7 +163,7 @@ impl TraderTrait for NextBlockClient {
 pub struct TraderClient {
     pub cluster: Cluster,
     pub tip_accounts: Arc<RwLock<Vec<String>>>,
-    pub sender: Box<dyn TraderTrait + Send + Sync>,
+    pub sender: Arc<dyn TraderTrait + Send + Sync>,
 }
 
 impl Clone for TraderClient {
@@ -161,39 +171,16 @@ impl Clone for TraderClient {
         Self {
             cluster: self.cluster.clone(),
             tip_accounts: self.tip_accounts.clone(),
-            sender: if self.cluster.fee_type == FeeType::Jito {
-                Box::new(JitoClient {
-                    client: RpcClient::new(self.cluster.fee_endpoint.clone())
-                })
-            } else {
-                let auth_token = self.cluster.fee_token.clone();
-                let endpoint = self.cluster.fee_endpoint.parse::<Uri>().unwrap();
-                let tls = tonic::transport::ClientTlsConfig::new();
-                let channel = Channel::builder(endpoint)
-                    .tls_config(tls).unwrap()
-                    .tcp_keepalive(Some(Duration::from_secs(60)))
-                    .http2_keep_alive_interval(Duration::from_secs(30))
-                    .keep_alive_while_idle(true)
-                    .timeout(Duration::from_secs(30))
-                    .connect_timeout(Duration::from_secs(10))
-                    .connect_lazy();
-
-                let client: ApiClient<InterceptedService<Channel, MyInterceptor>> =
-                ApiClient::with_interceptor(channel, MyInterceptor::new(auth_token));
-                
-                Box::new(NextBlockClient {
-                    client
-                })
-            },
+            sender: self.sender.clone(),
         }
     }
 }
 
 impl TraderClient {
     pub fn new(cluster: Cluster) -> Self {
-        let sender: Box<dyn TraderTrait + Send + Sync> = if cluster.clone().fee_type == FeeType::Jito {
-           Box::new(JitoClient {
-                client: RpcClient::new(cluster.clone().fee_endpoint)
+        let sender: Arc<dyn TraderTrait + Send + Sync> = if cluster.clone().fee_type == FeeType::Jito {
+           Arc::new(JitoClient {
+                client: Arc::new(RpcClient::new(cluster.clone().fee_endpoint))
             })
         } else {
             let auth_token = cluster.fee_token.clone();
@@ -211,7 +198,7 @@ impl TraderClient {
             let client: ApiClient<InterceptedService<Channel, MyInterceptor>> =
             ApiClient::with_interceptor(channel, MyInterceptor::new(auth_token));
             
-            Box::new(NextBlockClient {
+            Arc::new(NextBlockClient {
                 client
             })
         };

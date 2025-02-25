@@ -69,7 +69,7 @@ pub async fn create_and_buy(
 
 pub async fn create_and_buy_list_with_jito(
     rpc: &RpcClient,
-    trader_client: &mut TraderClient,
+    trader_client: &TraderClient,
     payers: Vec<&Keypair>,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,
@@ -99,7 +99,7 @@ pub async fn create_and_buy_list_with_jito(
 
 pub async fn create_and_buy_with_jito(
     rpc: &RpcClient,
-    trader_client: &mut TraderClient,
+    trader_client: &TraderClient,
     payer: &Keypair,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,

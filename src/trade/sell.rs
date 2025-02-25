@@ -61,7 +61,7 @@ pub async fn sell_by_percent(
 pub async fn sell_by_percent_with_jito(
     rpc: &RpcClient,
     payer: &Keypair,
-    trader_client: &mut TraderClient,
+    trader_client: &TraderClient,
     mint: &Pubkey,
     percent: u64,
     slippage_basis_points: Option<u64>,
@@ -80,7 +80,7 @@ pub async fn sell_by_percent_with_jito(
 pub async fn sell_with_jito(
     rpc: &RpcClient,
     payer: &Keypair,
-    trader_client: &mut TraderClient,
+    trader_client: &TraderClient,
     mint: &Pubkey,
     amount_token: Option<u64>,
     slippage_basis_points: Option<u64>,

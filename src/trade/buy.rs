@@ -7,7 +7,7 @@ use spl_associated_token_account::{
     get_associated_token_address,
     instruction::create_associated_token_account,
 };
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use crate::{common::PriorityFee, constants::{self, trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE}}, instruction, priority::TraderClient};
 
@@ -29,7 +29,7 @@ pub async fn buy(
 /// Buy tokens using Jito
 pub async fn buy_with_jito(
     rpc: &RpcClient,
-    trader_client: &mut TraderClient,
+    trader_client: &TraderClient,
     payer: &Keypair,
     mint: &Pubkey,
     amount_sol: u64,
@@ -48,7 +48,7 @@ pub async fn buy_with_jito(
 
 pub async fn buy_list_with_jito(
     rpc: &RpcClient,
-    trader_client: &mut TraderClient,
+    trader_client: &TraderClient,
     payers: Vec<&Keypair>,
     mint: &Pubkey,
     amount_sols: Vec<u64>,

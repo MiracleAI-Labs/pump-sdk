@@ -106,10 +106,9 @@ impl PumpFun {
         amount_sols: Vec<u64>,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> { 
-        let mut trader_client = self.trader_client.clone();
         trade::create::create_and_buy_list_with_jito(
             &self.rpc,
-            &mut trader_client,
+            &self.trader_client,
             payers,
             mint,
             ipfs,
@@ -127,10 +126,9 @@ impl PumpFun {
         amount_sol: u64,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> { 
-        let mut trader_client = self.trader_client.clone();
         trade::create::create_and_buy_with_jito(
             &self.rpc,
-            &mut trader_client,
+            &self.trader_client,
             payer,
             mint,
             ipfs,
@@ -163,10 +161,9 @@ impl PumpFun {
         amount_sol: u64,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
-        let mut trader_client = self.trader_client.clone();
         trade::buy::buy_with_jito(
             &self.rpc,
-            &mut trader_client,
+            &self.trader_client,
             &self.payer,
             mint,
             amount_sol,
@@ -182,10 +179,9 @@ impl PumpFun {
         amount_sols: Vec<u64>,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
-        let mut trader_client = self.trader_client.clone();
         trade::buy::buy_list_with_jito(
             &self.rpc,
-            &mut trader_client,
+            &self.trader_client,
             payers,
             mint,
             amount_sols,
@@ -234,11 +230,10 @@ impl PumpFun {
         percent: u64,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
-        let mut trader_client = self.trader_client.clone();
         trade::sell::sell_by_percent_with_jito(
             &self.rpc,
             &self.payer,
-            &mut trader_client,
+            &self.trader_client,
             mint,
             percent,
             slippage_basis_points,
@@ -253,11 +248,10 @@ impl PumpFun {
         amount_token: Option<u64>,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
-        let mut trader_client = self.trader_client.clone();
         trade::sell::sell_with_jito(
             &self.rpc,
             &self.payer,
-            &mut trader_client,
+            &self.trader_client,
             mint,
             amount_token,
             slippage_basis_points,
