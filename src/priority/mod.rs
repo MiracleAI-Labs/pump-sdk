@@ -70,7 +70,7 @@ impl TraderTrait for JitoClient {
     }
 }
 
-struct MyInterceptor {
+pub struct MyInterceptor {
     auth_token: String,
 }
 
