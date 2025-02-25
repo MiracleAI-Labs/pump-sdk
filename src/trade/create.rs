@@ -69,7 +69,7 @@ pub async fn create_and_buy(
 
 pub async fn create_and_buy_list_with_jito(
     rpc: &RpcClient,
-    trader_client: &TraderClient,
+    trader_client: &mut TraderClient,
     payers: Vec<&Keypair>,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,
@@ -90,7 +90,7 @@ pub async fn create_and_buy_list_with_jito(
         transactions.push(buy_transaction);
     }
 
-    let signatures = trader_client.send_transactions(&transactions).await?;
+    let signatures = trader_client.sender.send_transactions(&transactions).await?;
 
     println!("Total Jito create and buy operation time: {:?}ms", start_time.elapsed().as_millis());
     
@@ -99,7 +99,7 @@ pub async fn create_and_buy_list_with_jito(
 
 pub async fn create_and_buy_with_jito(
     rpc: &RpcClient,
-    trader_client: &TraderClient,
+    trader_client: &mut TraderClient,
     payer: &Keypair,
     mint: &Keypair,
     ipfs: TokenMetadataIPFS,
@@ -112,7 +112,7 @@ pub async fn create_and_buy_with_jito(
 
     let transaction = build_create_and_buy_transaction_with_jito(rpc, trader_client, payer, mint, ipfs, amount_sol, slippage_basis_points, priority_fee).await?;
 
-    let signature = trader_client.send_transaction(&transaction).await?;
+    let signature = trader_client.sender.send_transaction(&transaction).await?;
 
     println!("Total Jito create and buy operation time: {:?}ms, signature: {}", start_time.elapsed().as_millis(), signature);
 

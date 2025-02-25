@@ -7,7 +7,7 @@ use spl_associated_token_account::{
     get_associated_token_address,
     instruction::create_associated_token_account,
 };
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use crate::{common::PriorityFee, constants::{self, trade::{DEFAULT_COMPUTE_UNIT_PRICE, DEFAULT_SLIPPAGE}}, instruction, priority::TraderClient};
 
@@ -29,7 +29,7 @@ pub async fn buy(
 /// Buy tokens using Jito
 pub async fn buy_with_jito(
     rpc: &RpcClient,
-    trader_client: &TraderClient,
+    trader_client: &mut TraderClient,
     payer: &Keypair,
     mint: &Pubkey,
     amount_sol: u64,
@@ -38,8 +38,8 @@ pub async fn buy_with_jito(
 ) -> Result<String, anyhow::Error> {
     let start_time = Instant::now();
 
-    let transaction = build_buy_transaction_with_jito(rpc, trader_client, payer, mint, amount_sol, slippage_basis_points, priority_fee).await?;
-    let signature = trader_client.send_transaction(&transaction).await?;
+    let transaction = build_buy_transaction_with_jito(rpc, &trader_client, payer, mint, amount_sol, slippage_basis_points, priority_fee).await?;
+    let signature = trader_client.sender.send_transaction(&transaction).await?;
 
     println!("Total Jito buy operation time: {:?}ms", start_time.elapsed().as_millis());
 
@@ -48,7 +48,7 @@ pub async fn buy_with_jito(
 
 pub async fn buy_list_with_jito(
     rpc: &RpcClient,
-    trader_client: &TraderClient,
+    trader_client: &mut TraderClient,
     payers: Vec<&Keypair>,
     mint: &Pubkey,
     amount_sols: Vec<u64>,
@@ -59,11 +59,11 @@ pub async fn buy_list_with_jito(
 
     let mut transactions = vec![];
     for (i, payer) in payers.iter().enumerate() {
-        let transaction = build_buy_transaction_with_jito(rpc, trader_client, payer, mint, amount_sols[i], slippage_basis_points, priority_fee).await?;
+        let transaction = build_buy_transaction_with_jito(rpc, &trader_client, payer, mint, amount_sols[i], slippage_basis_points, priority_fee).await?;
         transactions.push(transaction);
     }
     
-    let signature = trader_client.send_transactions(&transactions).await?;
+    let signature = trader_client.sender.send_transactions(&transactions).await?;
 
     println!("Total Jito buy operation time: {:?}ms", start_time.elapsed().as_millis());
 

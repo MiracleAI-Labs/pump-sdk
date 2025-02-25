@@ -13,6 +13,7 @@ pub struct Cluster {
     pub rpc_url: String,
     pub fee_type: FeeType,
     pub fee_endpoint: String,
+    pub fee_token: String,
     pub priority_fee: PriorityFee,
     pub commitment: CommitmentConfig,
 }

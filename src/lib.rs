@@ -10,7 +10,6 @@ pub mod trade;
 
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -27,7 +26,7 @@ use crate::priority::TraderClient;
 pub struct PumpFun {
     pub payer: Arc<Keypair>,
     pub rpc: RpcClient,
-    pub trader_client: Option<TraderClient>,
+    pub trader_client: TraderClient,
     pub priority_fee: PriorityFee,
 }
 
@@ -61,7 +60,7 @@ impl PumpFun {
         Self {
             payer,
             rpc,
-            trader_client: Some(trader_client),
+            trader_client,
             priority_fee: cluster.clone().priority_fee,
         }
     }
@@ -107,9 +106,10 @@ impl PumpFun {
         amount_sols: Vec<u64>,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> { 
+        let mut trader_client = self.trader_client.clone();
         trade::create::create_and_buy_list_with_jito(
             &self.rpc,
-            &self.trader_client.as_ref().unwrap(),
+            &mut trader_client,
             payers,
             mint,
             ipfs,
@@ -127,9 +127,10 @@ impl PumpFun {
         amount_sol: u64,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> { 
+        let mut trader_client = self.trader_client.clone();
         trade::create::create_and_buy_with_jito(
             &self.rpc,
-            &self.trader_client.as_ref().unwrap(),
+            &mut trader_client,
             payer,
             mint,
             ipfs,
@@ -162,9 +163,10 @@ impl PumpFun {
         amount_sol: u64,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
+        let mut trader_client = self.trader_client.clone();
         trade::buy::buy_with_jito(
             &self.rpc,
-            &self.trader_client.as_ref().unwrap(),
+            &mut trader_client,
             &self.payer,
             mint,
             amount_sol,
@@ -180,9 +182,10 @@ impl PumpFun {
         amount_sols: Vec<u64>,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
+        let mut trader_client = self.trader_client.clone();
         trade::buy::buy_list_with_jito(
             &self.rpc,
-            &self.trader_client.as_ref().unwrap(),
+            &mut trader_client,
             payers,
             mint,
             amount_sols,
@@ -231,10 +234,11 @@ impl PumpFun {
         percent: u64,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
+        let mut trader_client = self.trader_client.clone();
         trade::sell::sell_by_percent_with_jito(
             &self.rpc,
             &self.payer,
-            &self.trader_client.as_ref().unwrap(),
+            &mut trader_client,
             mint,
             percent,
             slippage_basis_points,
@@ -249,13 +253,11 @@ impl PumpFun {
         amount_token: Option<u64>,
         slippage_basis_points: Option<u64>,
     ) -> Result<String, anyhow::Error> {
-        let trader_client = self.trader_client.as_ref()
-            .ok_or_else(|| anyhow!("Trader client not found"))?;
-
+        let mut trader_client = self.trader_client.clone();
         trade::sell::sell_with_jito(
             &self.rpc,
             &self.payer,
-            trader_client,
+            &mut trader_client,
             mint,
             amount_token,
             slippage_basis_points,

@@ -61,7 +61,7 @@ pub async fn sell_by_percent(
 pub async fn sell_by_percent_with_jito(
     rpc: &RpcClient,
     payer: &Keypair,
-    trader_client: &TraderClient,
+    trader_client: &mut TraderClient,
     mint: &Pubkey,
     percent: u64,
     slippage_basis_points: Option<u64>,
@@ -80,7 +80,7 @@ pub async fn sell_by_percent_with_jito(
 pub async fn sell_with_jito(
     rpc: &RpcClient,
     payer: &Keypair,
-    trader_client: &TraderClient,
+    trader_client: &mut TraderClient,
     mint: &Pubkey,
     amount_token: Option<u64>,
     slippage_basis_points: Option<u64>,
@@ -89,7 +89,7 @@ pub async fn sell_with_jito(
     let start_time = Instant::now();
 
     let transaction = build_sell_transaction_with_jito(rpc, trader_client, payer, mint, amount_token, slippage_basis_points, priority_fee).await?;
-    let signature = trader_client.send_transaction(&transaction).await?;
+    let signature = trader_client.sender.send_transaction(&transaction).await?;
     
     println!("Total Jito sell operation time: {:?}ms, signature: {}", start_time.elapsed().as_millis(), signature);
 

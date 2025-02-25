@@ -1,15 +1,16 @@
-use std::str::FromStr;
-
+use std::{str::FromStr, sync::Arc};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use anyhow::{anyhow, Result};
-use rpc_data::TipAccountResult;
 use rand::seq::IteratorRandom;
+use rpc_data::TipAccountResult;
 use solana_sdk::{
     pubkey::Pubkey,
     transaction::{Transaction, VersionedTransaction},
 };
 use tokio::sync::RwLock;
+use tonic::{service::{interceptor::InterceptedService, Interceptor}, transport::{Channel, Uri}, Status};
 use tracing::error;
-use tonic::transport::{Channel, Uri};
 use std::time::Duration;
 use solana_transaction_status::UiTransactionEncoding;
 
@@ -25,11 +26,22 @@ use crate::priority::rpc_client::RpcClient;
 use crate::priority::api::api_client::ApiClient;
 use crate::common::structs::{Cluster, FeeType};
 
+static TIP_ACCOUNTS: &[&str] = &[
+    "NextbLoCkVtMGcV47JzewQdvBpLqT9TxQFozQkN98pE",
+    "NexTbLoCkWykbLuB1NkjXgFWkX9oAtcoagQegygXXA2",
+    "NeXTBLoCKs9F1y5PJS9CKrFNNLU1keHW71rfh7KgA1X",
+    "NexTBLockJYZ7QD7p2byrUa6df8ndV2WSd8GkbWqfbb",
+    "neXtBLock1LeC67jYd1QdAa32kbVeubsfPNTJC1V5At",
+    "nEXTBLockYgngeRmRrjDV31mGSekVPqZoMGhQEZtPVG",
+    "NEXTbLoCkB51HpLBLojQfpyVAMorm3zzKg7w9NFdqid",
+    "nextBLoCkPMgmG8ZgJtABeScP35qLa2AMCNKntAP7Xc"
+];
+
 // 定义交易发送接口
 #[async_trait::async_trait]
 pub trait TraderTrait: Send + Sync {
-    async fn send_transaction(&self, transaction: &Transaction) -> Result<String, anyhow::Error>;
-    async fn send_transactions(&self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error>;
+    async fn send_transaction(&mut self, transaction: &Transaction) -> Result<String, anyhow::Error>;
+    async fn send_transactions(&mut self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error>;
     async fn get_tip_accounts(&self) -> Result<TipAccountResult>;
 }
 
@@ -40,12 +52,12 @@ pub struct JitoClient {
 
 #[async_trait::async_trait]
 impl TraderTrait for JitoClient {
-    async fn send_transaction(&self, transaction: &Transaction) -> Result<String, anyhow::Error> {
+    async fn send_transaction(&mut self, transaction: &Transaction) -> Result<String, anyhow::Error> {
         let bundles = vec![VersionedTransaction::from(transaction.clone())];
         Ok(self.client.send_bundle(&bundles).await?)
     }
 
-    async fn send_transactions(&self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
+    async fn send_transactions(&mut self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
         let bundles: Vec<VersionedTransaction> = transactions.iter()
             .map(|t| VersionedTransaction::from(t.clone()))
             .collect();
@@ -58,20 +70,40 @@ impl TraderTrait for JitoClient {
     }
 }
 
+struct MyInterceptor {
+    auth_token: String,
+}
+
+impl MyInterceptor {
+    pub fn new(auth_token: String) -> Self {
+        Self { auth_token }
+    }
+}
+
+impl Interceptor for MyInterceptor {
+    fn call(&mut self, mut request: tonic::Request<()>) -> Result<tonic::Request<()>, Status> {
+        request.metadata_mut().insert(
+            "authorization", 
+            tonic::metadata::MetadataValue::from_str(&self.auth_token)
+                .map_err(|_| Status::invalid_argument("Invalid auth token"))?
+        );
+        Ok(request)
+    }
+}
+
 // NextBlock实现
 pub struct NextBlockClient {
-    client: ApiClient<Channel>,
+    pub client: ApiClient<InterceptedService<Channel, MyInterceptor>>,
 }
 
 #[async_trait::async_trait]
 impl TraderTrait for NextBlockClient {
-    async fn send_transaction(&self, transaction: &Transaction) -> Result<String, anyhow::Error> {
-        let mut client = self.client.clone();
+    async fn send_transaction(&mut self, transaction: &Transaction) -> Result<String, anyhow::Error> {
         let versioned_transaction = VersionedTransaction::from(transaction.clone());
         let encoding = UiTransactionEncoding::Base58;
-        let content = serialize_and_encode(&versioned_transaction, encoding)?;
+        let content = serialize_and_encode(&versioned_transaction, encoding).await?;
         
-        let res = client.post_submit_v2(api::PostSubmitRequest {
+        let res = self.client.post_submit_v2(api::PostSubmitRequest {
             transaction: Some(api::TransactionMessage {
                 content,
                 is_cleanup: false,
@@ -85,14 +117,13 @@ impl TraderTrait for NextBlockClient {
         Ok(res.into_inner().signature)
     }
 
-    async fn send_transactions(&self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
-        let mut client = self.client.clone();
+    async fn send_transactions(&mut self, transactions: &Vec<Transaction>) -> Result<String, anyhow::Error> {
         let mut entries = Vec::new();
         let encoding = UiTransactionEncoding::Base58;
         
         for transaction in transactions {
             let versioned_transaction = VersionedTransaction::from(transaction.clone());
-            let content = serialize_and_encode(&versioned_transaction, encoding)?;
+            let content = serialize_and_encode(&versioned_transaction, encoding).await?;
             entries.push(api::PostSubmitRequestEntry {
                 transaction: Some(api::TransactionMessage {
                     content,
@@ -102,7 +133,7 @@ impl TraderTrait for NextBlockClient {
             });
         }
 
-        let res = client.post_submit_batch_v2(api::PostSubmitBatchRequest {
+        let res = self.client.post_submit_batch_v2(api::PostSubmitBatchRequest {
             entries,
             submit_strategy: api::SubmitStrategy::PSubmitAll as i32,
             use_bundle: Some(false),
@@ -114,71 +145,79 @@ impl TraderTrait for NextBlockClient {
     }
 
     async fn get_tip_accounts(&self) -> Result<TipAccountResult> {
-        let accounts = vec![
-            "NextbLoCkVtMGcV47JzewQdvBpLqT9TxQFozQkN98pE",
-            "NexTbLoCkWykbLuB1NkjXgFWkX9oAtcoagQegygXXA2",
-            "NeXTBLoCKs9F1y5PJS9CKrFNNLU1keHW71rfh7KgA1X",
-            "NexTBLockJYZ7QD7p2byrUa6df8ndV2WSd8GkbWqfbb",
-            "neXtBLock1LeC67jYd1QdAa32kbVeubsfPNTJC1V5At",
-            "nEXTBLockYgngeRmRrjDV31mGSekVPqZoMGhQEZtPVG",
-            "NEXTbLoCkB51HpLBLojQfpyVAMorm3zzKg7w9NFdqid",
-            "nextBLoCkPMgmG8ZgJtABeScP35qLa2AMCNKntAP7Xc"
-        ];
-        Ok(TipAccountResult { accounts: accounts.iter().map(|s| s.to_string()).collect() })
+        let accounts = TIP_ACCOUNTS.iter().map(|s| s.to_string()).collect();
+        Ok(TipAccountResult { accounts })
     }
 }
 
 pub struct TraderClient {
-    cluster: Cluster,
-    tip_accounts: RwLock<Vec<String>>,
-    sender: Box<dyn TraderTrait>,
+    pub cluster: Cluster,
+    pub tip_accounts: Arc<RwLock<Vec<String>>>,
+    pub sender: Box<dyn TraderTrait + Send + Sync>,
 }
 
 impl Clone for TraderClient {
     fn clone(&self) -> Self {
-        let cluster = self.cluster.clone();
-        let sender: Box<dyn TraderTrait> = if cluster.fee_type == FeeType::Jito {
-            Box::new(JitoClient {
-                client: RpcClient::new(cluster.fee_endpoint.clone())
-            })
-        } else {
-            let endpoint = cluster.fee_endpoint.parse::<Uri>().unwrap();
-            let channel = Channel::builder(endpoint)
-                .keep_alive_timeout(Duration::from_secs(5))
-                .keep_alive_while_idle(true)
-                .connect_lazy();
-            Box::new(NextBlockClient {
-                client: ApiClient::new(channel)
-            })
-        };
-
         Self {
-            cluster: cluster.clone(),
-            tip_accounts: RwLock::new(Vec::new()),
-            sender,
+            cluster: self.cluster.clone(),
+            tip_accounts: self.tip_accounts.clone(),
+            sender: if self.cluster.fee_type == FeeType::Jito {
+                Box::new(JitoClient {
+                    client: RpcClient::new(self.cluster.fee_endpoint.clone())
+                })
+            } else {
+                let auth_token = self.cluster.fee_token.clone();
+                let endpoint = self.cluster.fee_endpoint.parse::<Uri>().unwrap();
+                let tls = tonic::transport::ClientTlsConfig::new();
+                let channel = Channel::builder(endpoint)
+                    .tls_config(tls).unwrap()
+                    .tcp_keepalive(Some(Duration::from_secs(60)))
+                    .http2_keep_alive_interval(Duration::from_secs(30))
+                    .keep_alive_while_idle(true)
+                    .timeout(Duration::from_secs(30))
+                    .connect_timeout(Duration::from_secs(10))
+                    .connect_lazy();
+
+                let client: ApiClient<InterceptedService<Channel, MyInterceptor>> =
+                ApiClient::with_interceptor(channel, MyInterceptor::new(auth_token));
+                
+                Box::new(NextBlockClient {
+                    client
+                })
+            },
         }
     }
 }
 
 impl TraderClient {
     pub fn new(cluster: Cluster) -> Self {
-        let sender: Box<dyn TraderTrait> = if cluster.clone().fee_type == FeeType::Jito {
-            Box::new(JitoClient {
+        let sender: Box<dyn TraderTrait + Send + Sync> = if cluster.clone().fee_type == FeeType::Jito {
+           Box::new(JitoClient {
                 client: RpcClient::new(cluster.clone().fee_endpoint)
             })
         } else {
-            let endpoint = cluster.clone().fee_endpoint.parse::<Uri>().unwrap();
+            let auth_token = cluster.fee_token.clone();
+            let endpoint = cluster.fee_endpoint.parse::<Uri>().unwrap();
+            let tls = tonic::transport::ClientTlsConfig::new();
             let channel = Channel::builder(endpoint)
-                .keep_alive_timeout(Duration::from_secs(5))
+                .tls_config(tls).unwrap()
+                .tcp_keepalive(Some(Duration::from_secs(60)))
+                .http2_keep_alive_interval(Duration::from_secs(30))
                 .keep_alive_while_idle(true)
+                .timeout(Duration::from_secs(30))
+                .connect_timeout(Duration::from_secs(10))
                 .connect_lazy();
+
+            let client: ApiClient<InterceptedService<Channel, MyInterceptor>> =
+            ApiClient::with_interceptor(channel, MyInterceptor::new(auth_token));
+            
             Box::new(NextBlockClient {
-                client: ApiClient::new(channel)
+                client
             })
         };
         Self {
             cluster: cluster.clone(),
-            tip_accounts: RwLock::new(vec![]),
+            tip_accounts: Arc::new(RwLock::new(vec![])),
             sender,
         }
     }
@@ -211,111 +250,26 @@ impl TraderClient {
         self.init_tip_accounts().await?;
 
         let accounts = self.tip_accounts.read().await;
-        accounts
-            .iter()
-            .choose(&mut rand::rng())
-            .ok_or_else(|| anyhow!("jito: no tip accounts available"))
-            .and_then(|acc| {
-                Pubkey::from_str(acc).map_err(|err| {
+        if let Some(acc) = accounts.iter().choose(&mut rand::rng()) {
+            Pubkey::from_str(acc)
+                .map_err(|err| {
                     error!("jito: failed to parse Pubkey: {:?}", err);
                     anyhow!("Invalid pubkey format")
                 })
-            })
-    }
-
-    pub async fn send_transaction(
-        &self,
-        transaction: &Transaction,
-    ) -> Result<String, anyhow::Error> {
-        self.sender.send_transaction(transaction).await
-    }
-
-    pub async fn send_transactions(
-        &self,
-        transactions: &Vec<Transaction>,
-    ) -> Result<String, anyhow::Error> {
-        self.sender.send_transactions(transactions).await
-    }
-}
-
-fn serialize_and_encode<T>(input: &T, encoding: UiTransactionEncoding) -> Result<String, anyhow::Error>
-where
-    T: serde::ser::Serialize,
-{
-    let serialized = bincode::serialize(input)
-        .map_err(|e| anyhow::anyhow!("Serialization failed: {e}"))?;
-    let encoded = match encoding {
-        UiTransactionEncoding::Base58 => bs58::encode(serialized).into_string(),
-        _ => {
-            return Err(anyhow::anyhow!("unsupported encoding: {encoding:?}. Supported encodings: base58"))
+        } else {
+            Err(anyhow!("no valid tip accounts found"))
         }
-    };
-    Ok(encoded)
+    }
 }
 
-// 示例代码
-#[cfg(test)]
-mod tests {
-    use crate::common::PriorityFee;
-
-    use super::*;
-    use solana_sdk::{
-        commitment_config::CommitmentConfig, message::Message, signature::{Keypair, Signer}, system_instruction
+async fn serialize_and_encode(
+    transaction: &VersionedTransaction,
+    encoding: UiTransactionEncoding,
+) -> Result<String> {
+    let serialized = match encoding {
+        UiTransactionEncoding::Base58 => bs58::encode(bincode::serialize(transaction)?).into_string(),
+        UiTransactionEncoding::Base64 => STANDARD.encode(bincode::serialize(transaction)?),
+        _ => return Err(anyhow!("Unsupported encoding")),
     };
-
-    // Jito发送交易示例
-    #[tokio::test]
-    async fn test_jito_send_transaction() -> Result<()> {
-        // 初始化Jito客户端
-        let jito_client = TraderClient::new(Cluster {
-            rpc_url: "https://jito-api.mainnet.solana.com".to_string(),
-            fee_type: FeeType::Jito,
-            fee_endpoint: "https://jito-api.mainnet.solana.com".to_string(),
-            priority_fee: PriorityFee::default(),
-            commitment: CommitmentConfig::processed(),
-        });
-
-        // 创建一个简单的转账交易
-        let from = Keypair::new();
-        let to = Pubkey::new_unique();
-        let recent_blockhash = solana_sdk::hash::Hash::default(); // 实际使用时需要获取最新的blockhash
-        
-        let instruction = system_instruction::transfer(&from.pubkey(), &to, 1000000);
-        let message = Message::new(&[instruction], Some(&from.pubkey()));
-        let transaction = Transaction::new(&[&from], message, recent_blockhash);
-
-        // 发送交易
-        let signature = jito_client.send_transaction(&transaction).await?;
-        println!("Jito交易签名: {}", signature);
-        
-        Ok(())
-    }
-
-    // NextBlock发送交易示例
-    #[tokio::test]
-    async fn test_nextblock_send_transaction() -> Result<()> {
-        // 初始化NextBlock客户端
-        let nextblock_client = TraderClient::new(Cluster {
-            rpc_url: "http://nextblock-api.mainnet.solana.com".to_string(),
-            fee_type: FeeType::NextBlock,
-            fee_endpoint: "http://nextblock-api.mainnet.solana.com".to_string(),
-            priority_fee: PriorityFee::default(),
-            commitment: CommitmentConfig::processed(),
-        });
-
-        // 创建一个简单的转账交易
-        let from = Keypair::new();
-        let to = Pubkey::new_unique();
-        let recent_blockhash = solana_sdk::hash::Hash::default(); // 实际使用时需要获取最新的blockhash
-
-        let instruction = system_instruction::transfer(&from.pubkey(), &to, 1000000);
-        let message = Message::new(&[instruction], Some(&from.pubkey()));
-        let transaction = Transaction::new(&[&from], message, recent_blockhash);
-
-        // 发送交易
-        let signature = nextblock_client.send_transaction(&transaction).await?;
-        println!("NextBlock交易签名: {}", signature);
-
-        Ok(())
-    }
+    Ok(serialized)
 }
