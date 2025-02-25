@@ -256,11 +256,11 @@ where
 // 示例代码
 #[cfg(test)]
 mod tests {
+    use crate::common::PriorityFee;
+
     use super::*;
     use solana_sdk::{
-        message::Message,
-        signature::{Keypair, Signer},
-        system_instruction,
+        commitment_config::CommitmentConfig, message::Message, signature::{Keypair, Signer}, system_instruction
     };
 
     // Jito发送交易示例
