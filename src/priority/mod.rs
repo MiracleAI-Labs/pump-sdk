@@ -4,6 +4,7 @@ use base64::Engine;
 use anyhow::{anyhow, Result};
 use rand::seq::IteratorRandom;
 use rpc_data::TipAccountResult;
+use rustls::crypto::{ring, CryptoProvider};
 use solana_sdk::{
     pubkey::Pubkey,
     transaction::{Transaction, VersionedTransaction},
@@ -14,6 +15,14 @@ use tracing::error;
 use std::time::Duration;
 use solana_transaction_status::UiTransactionEncoding;
 
+use tonic::transport::ClientTlsConfig;
+use tonic::metadata::MetadataValue;
+use tonic::Request;
+
+// 保持活跃参数（对应 Go 的 kacp）
+const KEEPALIVE_TIME: Duration = Duration::from_secs(30);
+const KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub mod rpc_data;
 pub mod client_error;
 pub mod http_sender;
@@ -22,21 +31,9 @@ pub mod rpc_client;
 pub mod rpc_sender;
 pub mod api;
 
-use crate::priority::rpc_client::RpcClient;
+use crate::{constants::accounts::TIP_ACCOUNTS, priority::rpc_client::RpcClient};
 use crate::priority::api::api_client::ApiClient;
 use crate::common::structs::{Cluster, FeeType};
-
-static TIP_ACCOUNTS: &[&str] = &[
-    "NextbLoCkVtMGcV47JzewQdvBpLqT9TxQFozQkN98pE",
-    "NexTbLoCkWykbLuB1NkjXgFWkX9oAtcoagQegygXXA2",
-    "NeXTBLoCKs9F1y5PJS9CKrFNNLU1keHW71rfh7KgA1X",
-    "NexTBLockJYZ7QD7p2byrUa6df8ndV2WSd8GkbWqfbb",
-    "neXtBLock1LeC67jYd1QdAa32kbVeubsfPNTJC1V5At",
-    "nEXTBLockYgngeRmRrjDV31mGSekVPqZoMGhQEZtPVG",
-    "NEXTbLoCkB51HpLBLojQfpyVAMorm3zzKg7w9NFdqid",
-    "nextBLoCkPMgmG8ZgJtABeScP35qLa2AMCNKntAP7Xc"
-];
-
 // 定义交易发送接口
 #[async_trait::async_trait]
 pub trait TraderTrait: Send + Sync {
@@ -183,11 +180,17 @@ impl TraderClient {
                 client: Arc::new(RpcClient::new(cluster.clone().fee_endpoint))
             })
         } else {
+            CryptoProvider::install_default(ring::default_provider())
+            .expect("Failed to install default CryptoProvider");
+
             let auth_token = cluster.fee_token.clone();
             let endpoint = cluster.fee_endpoint.parse::<Uri>().unwrap();
-            let tls = tonic::transport::ClientTlsConfig::new();
+            println!("endpoint: {:?}", endpoint);
+
+            // let tls = tonic::transport::ClientTlsConfig::new();
+            let tls = ClientTlsConfig::new();
             let channel = Channel::builder(endpoint)
-                .tls_config(tls).unwrap()
+                .tls_config(tls).expect("Failed to create TLS config")
                 .tcp_keepalive(Some(Duration::from_secs(60)))
                 .http2_keep_alive_interval(Duration::from_secs(30))
                 .keep_alive_while_idle(true)

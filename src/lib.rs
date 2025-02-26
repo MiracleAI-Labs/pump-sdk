@@ -25,7 +25,7 @@ use crate::priority::TraderClient;
 
 pub struct PumpFun {
     pub payer: Arc<Keypair>,
-    pub rpc: RpcClient,
+    pub rpc: Arc<RpcClient>,
     pub trader_client: TraderClient,
     pub priority_fee: PriorityFee,
 }
@@ -34,10 +34,7 @@ impl Clone for PumpFun {
     fn clone(&self) -> Self {
         Self {
             payer: self.payer.clone(),
-            rpc: RpcClient::new_with_commitment(
-                self.rpc.url().to_string(),
-                self.rpc.commitment()
-            ),
+            rpc: self.rpc.clone(),
             trader_client: self.trader_client.clone(),
             priority_fee: self.priority_fee.clone(),
         }
@@ -59,7 +56,7 @@ impl PumpFun {
 
         Self {
             payer,
-            rpc,
+            rpc: Arc::new(rpc),
             trader_client,
             priority_fee: cluster.clone().priority_fee,
         }
